@@ -1,13 +1,18 @@
+import os
 import socket
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi import UploadFile, File, Form
 
 from zeroconf.asyncio import AsyncZeroconf, AsyncServiceInfo
 from zeroconf import ServiceBrowser, ServiceListener, Zeroconf
 
 from config import load_device
+
+import shutil
+import requests
 
 
 def get_ip():
@@ -104,6 +109,35 @@ async def get_peers():
     return adrw_listener.peers
 
 
+@app.post("/recieve")
+async def recieve_file(file: UploadFile = File(...)):
+    os.makedirs("downloads", exist_ok=True)
+    file_path = os.path.join("downloads", file.filename)
+
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    print(f"Received {file_path}")
+    return {"status": "ok"}
+
+
+@app.post("/sent-to-peer")
+async def send_to_peer(target_ip: str = Form(...), file_path: str = Form(...)):
+    if not os.path.exists(file_path):
+        return {"status": "error", "message": "File not found"}
+
+    file_name = os.path.basename(file_path)
+
+    try:
+        with open(file_path, "rb") as f:
+            files = {"file": (file_name, f)}
+            response = requests.post(f"http://{target_ip}:8000/recieve", files=files)
+            return response.json()
+
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
 if __name__ == "__main__":
     import uvicorn
     import argparse
@@ -112,7 +146,8 @@ if __name__ == "__main__":
 
     parser.add_argument("--port", type=int, default=8000, help="Port to run the server on (default: 8000)")
     parser.add_argument("--host", type=str, default="0.0.0.0")
-    parser.add_argument("--name", type=str, default="ADRW Device", help="Device name to advertise (default: ADRW Device)")
+    parser.add_argument("--name", type=str, default="ADRW Device",
+                        help="Device name to advertise (default: ADRW Device)")
 
     args = parser.parse_args()
 

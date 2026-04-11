@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import "./App.css";
 import { Command } from "@tauri-apps/plugin-shell"; // Import Tauri's Command API
+import { open } from "@tauri-apps/plugin-dialog";
 
 function App() {
     const [engineStatus, setEngineStatus] = useState("Offline");
@@ -17,6 +18,32 @@ function App() {
             console.error("Failed to fetch peers:", err);
         }
     }
+
+    const sendFile = async (peerIp) => {
+        try {
+            const selectedPath = await open({
+                multiple: false,
+                directory: false,
+            });
+
+            if (!selectedPath) return;
+
+            const formData = new FormData();
+            formData.append("target_ip", peerIp);
+            formData.append("file_path", selectedPath);
+
+            const response = await fetch("http://localhost:8000/send-to-peer", {
+                method: "POST",
+                body: formData,
+            });
+
+            const result = await response.json();
+            alert(result.message || result.error);
+
+        } catch (err) {
+            console.error("Transfer failed", err);
+        }
+    };
 
     const checkEngine = async () => {
         try {
@@ -87,9 +114,8 @@ function App() {
                         <div className="peer-list">
                             {Object.entries(peers).map(([name, ip]) => (
                                 <div key={name} className="peer-card">
-                                    <span>📱</span>
                                     <strong>{name}</strong>
-                                    <small>{ip}</small>
+                                    <button onClick={() => sendFile(ip)}>Send File</button>
                                 </div>
                             ))}
                         </div>
