@@ -48,9 +48,8 @@ jobs:
 
       - name: build python sidecar
         run: |
-          # FIX 3: httpx replaces requests in the sidecar
           pip install pyinstaller fastapi uvicorn httpx psutil zeroconf
-          npm run build:engine
+          python build_tools/build_sidecar.py
 
       - name: install frontend dependencies
         run: npm install

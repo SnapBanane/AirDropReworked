@@ -32,10 +32,11 @@ OUTPUT_DIR = os.path.join(ROOT_DIR, "src-tauri", "binaries")
 
 
 def build():
-    if not os.path.exists(VENV_PYTHON):
-        print(f"Error: Venv not found at {VENV_PYTHON}")
-        print("Run: cd binaries && python -m venv .venv && .venv/bin/pip install fastapi uvicorn httpx psutil zeroconf")
-        return
+    if os.path.exists(VENV_PYTHON):
+        python = VENV_PYTHON
+    else:
+        python = sys.executable
+        print(f"Venv not found, falling back to: {python}")
 
     if platform == "win32":
         subprocess.run(["taskkill", "/F", "/IM", f"{DIST_NAME}.exe", "/T"], stderr=subprocess.DEVNULL,
@@ -45,7 +46,7 @@ def build():
 
     try:
         subprocess.run([
-            VENV_PYTHON, "-m", "PyInstaller",
+            python, "-m", "PyInstaller",
             "--onefile", "--noconsole", "--clean",
             "--name", DIST_NAME,
             SOURCE_FILE
