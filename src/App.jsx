@@ -1,12 +1,13 @@
-import { useState, useEffect, useCallback } from "react";
-import { Command } from "@tauri-apps/plugin-shell";
-import { open, save } from "@tauri-apps/plugin-dialog";
-import { getCurrentWebview } from "@tauri-apps/api/webview";
+import {useState, useEffect, useCallback, useRef} from "react";
+import {Command} from "@tauri-apps/plugin-shell";
+import {open, save} from "@tauri-apps/plugin-dialog";
+import {getCurrentWebview} from "@tauri-apps/api/webview";
 import "./App.css";
 
 function App() {
+    const sidecarStarted = useRef(false);
     const [status, setStatus] = useState("Initializing...");
-    const [info, setInfo] = useState({ name: "-", ip: "-" });
+    const [info, setInfo] = useState({name: "-", ip: "-"});
     const [peers, setPeers] = useState({});
     const [transferRequest, setTransferRequest] = useState(null);
 
@@ -24,8 +25,11 @@ function App() {
 
             const tRes = await fetch("http://localhost:8000/check-request");
             const tData = await tRes.json();
+
             if (tData.available && !transferRequest) {
                 setTransferRequest(tData);
+            } else if (!tData.available && transferRequest) {
+                setTransferRequest(null);
             }
         } catch (e) {
             setStatus("Engine Offline");
@@ -33,103 +37,111 @@ function App() {
     }, [transferRequest]);
 
     useEffect(() => {
-        let interval;
-        const run = async () => {
-            try {
-                const cmd = Command.sidecar("binaries/adrw-engine");
-                cmd.stdout.on("data", (line) => {
-                    if (line.includes("ENGINE_READY")) {
-                        sync();
-                        interval = setInterval(sync, 2000);
-                    }
-                });
-                await cmd.spawn();
-            } catch (e) {
-                console.error("Failed to spawn engine", e);
-            }
-        };
+        const preventDefault = (e) => e.preventDefault();
+        window.addEventListener("dragover", preventDefault);
+        window.addEventListener("drop", preventDefault);
 
-        run();
-
-        const unlisten = getCurrentWebview().onDragDropEvent((event) => {
-            if (event.payload.type === "drop") {
-                const droppedPath = event.payload.paths[0];
-                const firstPeer = Object.values(peers)[0];
-                if (firstPeer) {
-                    send(firstPeer.ip, firstPeer.port, droppedPath);
-                } else {
-                    alert("No peers found to drop file to.");
+        let unlisten;
+        if (!sidecarStarted.current) {
+            sidecarStarted.current = true;
+            let interval;
+            const run = async () => {
+                try {
+                    const cmd = Command.sidecar("binaries/adrw-engine");
+                    cmd.stdout.on("data", (line) => {
+                        if (line.includes("ENGINE_READY")) {
+                            sync();
+                            interval = setInterval(sync, 2000);
+                        }
+                    });
+                    await cmd.spawn();
+                } catch (e) {
+                    sidecarStarted.current = false;
                 }
-            }
-        });
+            };
+            run();
+        }
+
+        const setupEvents = async () => {
+            unlisten = await getCurrentWebview().onDragDropEvent((event) => {
+                if (event.payload.type === "drop") {
+                    const droppedPath = event.payload.paths[0];
+                    const peerList = Object.values(peers);
+                    if (peerList.length > 0) {
+                        send(peerList[0].ip, peerList[0].port, droppedPath);
+                    }
+                }
+            });
+        };
+        setupEvents();
 
         return () => {
-            if (interval) clearInterval(interval);
-            unlisten.then((f) => f());
+            window.removeEventListener("dragover", preventDefault);
+            window.removeEventListener("drop", preventDefault);
+            if (unlisten) unlisten();
         };
     }, [sync, peers]);
 
     const send = async (ip, port, manualPath = null) => {
-        let path = manualPath || await open({ multiple: false });
+        let path = manualPath || await open({multiple: false});
         if (!path) return;
 
+        setStatus("Waiting...");
         const fd = new FormData();
         fd.append("target_ip", ip);
         fd.append("target_port", port);
         fd.append("file_path", path);
 
         try {
-            setStatus("Sending...");
             const res = await fetch("http://localhost:8000/sent-to-peer", {
                 method: "POST", body: fd,
             });
             const out = await res.json();
             setStatus("Online");
-            alert(out.status === "ok" ? "File Sent Successfully!" : "Refused/Error");
+            if (out.status !== "ok") alert("Refused");
         } catch (e) {
-            alert("Transfer failed");
             setStatus("Online");
         }
     };
 
     const handleAccept = async () => {
-        // Opens the Native File Explorer to choose save location
+        const currentId = transferRequest.id;
         const savePath = await save({
             defaultPath: transferRequest.filename,
         });
 
         if (savePath) {
+            setTransferRequest(null);
             const fd = new FormData();
             fd.append("accepted", "true");
-            // Pass the path chosen by the user in the explorer back to the backend
             fd.append("save_path", savePath);
-
+            fd.append("transfer_id", currentId);
             await fetch("http://localhost:8000/respond-transfer", {
                 method: "POST", body: fd,
             });
-            setTransferRequest(null);
         }
     };
 
     const handleDecline = async () => {
+        const currentId = transferRequest.id;
+        setTransferRequest(null);
         const fd = new FormData();
         fd.append("accepted", "false");
+        fd.append("transfer_id", currentId);
         await fetch("http://localhost:8000/respond-transfer", {
             method: "POST", body: fd,
         });
-        setTransferRequest(null);
     };
 
-    return (
-        <div className="app-container">
+    return (<div className="app-container">
             <nav className="navbar">
                 <div className="logo">ADRW</div>
-                <div className={`status-dot ${status.toLowerCase()}`}>
+                <div className={`status-dot ${status.toLowerCase().replace(" ", "-")}`}>
                     {status}
                 </div>
             </nav>
 
-            <div className="main-content">
+            <main className="main-content">
                 <header className="device-header">
                     <h1>{info.name}</h1>
                     <p>{info.ip}</p>
@@ -138,32 +150,26 @@ function App() {
                 <section className="peer-section">
                     <div className="section-header">
                         <h3>Nearby Devices</h3>
-                        <p className="hint">Drag a file or use the button below</p>
                     </div>
 
                     <div className="peer-grid">
-                        {Object.entries(peers).map(([name, data]) => (
-                            <div key={name} className="peer-card">
+                        {Object.entries(peers).map(([name, data]) => (<div key={name} className="peer-card">
                                 <div className="peer-icon">{name[0].toUpperCase()}</div>
                                 <div className="peer-info">
                                     <strong>{name}</strong>
                                     <span>{data.ip}</span>
                                 </div>
-                                {/* BUTTON ADDED BACK HERE */}
                                 <button className="select-file-btn" onClick={() => send(data.ip, data.port)}>
                                     Select File
                                 </button>
-                            </div>
-                        ))}
+                            </div>))}
                         {Object.keys(peers).length === 0 && (
-                            <div className="empty-state">Searching for devices...</div>
-                        )}
+                            <div className="empty-state">Searching for devices...</div>)}
                     </div>
                 </section>
-            </div>
+            </main>
 
-            {transferRequest && (
-                <div className="modal-overlay">
+            {transferRequest && (<div className="modal-overlay">
                     <div className="modal-card">
                         <div className="modal-icon">📁</div>
                         <h2>Incoming File</h2>
@@ -181,10 +187,8 @@ function App() {
                             </button>
                         </div>
                     </div>
-                </div>
-            )}
-        </div>
-    );
+                </div>)}
+        </div>);
 }
 
 export default App;
