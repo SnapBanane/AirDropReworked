@@ -4,10 +4,10 @@
   "version": "0.1.0",
   "identifier": "com.adrw.reworked",
   "build": {
-    "frontendDist": "../build",
+    "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
-    "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "npm run build"
+    "beforeDevCommand": "npm run build:engine && npm run dev",
+    "beforeBuildCommand": "npm run build:engine && npm run build"
   },
   "app": {
     "windows": [

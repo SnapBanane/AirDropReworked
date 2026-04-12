@@ -8,8 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "build:engine": "binaries\\.venv\\Scripts\\python.exe build_tools/build_sidecar.py",
-    "dev:all": "npm run build:engine && npm run tauri dev"
+    "build:engine": "node build_tools/run_build_sidecar.js",
+    "dev:all": "npm run tauri dev"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
