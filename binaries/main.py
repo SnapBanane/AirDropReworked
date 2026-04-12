@@ -72,7 +72,6 @@ async def lifespan(app: FastAPI):
     browser = ServiceBrowser(aio_zc.zeroconf, "_adrw._tcp.local.", adrw_listener)
     await aio_zc.async_register_service(info)
 
-    # SIGNAL READY TO TAURI
     print("ENGINE_READY", flush=True)
 
     yield
@@ -106,10 +105,13 @@ async def recieve(file: UploadFile = File(...)):
 @app.post("/sent-to-peer")
 async def send(target_ip: str = Form(...), target_port: int = Form(...), file_path: str = Form(...)):
     p = Path(file_path)
-    if not p.exists(): return {"status": "error"}
-    with p.open("rb") as f:
-        r = requests.post(f"http://{target_ip}:{target_port}/recieve", files={"file": (p.name, f)})
-        return r.json()
+    if not p.exists(): return {"status": "error", "message": "File not found"}
+    try:
+        with p.open("rb") as f:
+            r = requests.post(f"http://{target_ip}:{target_port}/recieve", files={"file": (p.name, f)}, timeout=None)
+            return r.json()
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 
 if __name__ == "__main__":
@@ -117,17 +119,14 @@ if __name__ == "__main__":
     import argparse
 
     threading.Thread(target=watch_parent_process, daemon=True).start()
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--name", type=str, default=None)
     args = parser.parse_args()
 
-    if args.name:
-        name = args.name
-    else:
-        conf = load_device()
-        name = conf.get("device_name", "ADRW-Device")
-
-    app.state.device_name = name
+    config = load_device()
+    app.state.device_name = args.name if args.name else config.get("device_name")
     app.state.port = args.port
-    uvicorn.run(app, host="0.0.0.0", port=args.port, log_level="error")
+
+    uvicorn.run(app, host="0.0.0.0", port=args.port, log_level="critical", access_log=False)
