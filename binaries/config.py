@@ -3,6 +3,7 @@ import os
 
 CONFIG_FILE = 'config.json'
 
+
 def load_device():
     default_config = {"device_name": "ADRW Device"}
 

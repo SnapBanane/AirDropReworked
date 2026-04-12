@@ -1,34 +1,62 @@
 import subprocess
-import shutil
 import os
-import platform
+import shutil
+import time
+import sys
 
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 APP_NAME = "adrw-engine"
-TARGET_TRIPLE = "x86_64-pc-windows-msvc"
-DIST_NAME = f"{APP_NAME}-{TARGET_TRIPLE}"
-SOURCE_FILE = "../binaries/main.py"
-OUTPUT_DIR = "../src-tauri/binaries"
+
+# Detect platform for production naming
+platform = sys.platform
+if platform == "win32":
+    target = "x86_64-pc-windows-msvc"
+    extension = ".exe"
+elif platform == "darwin":
+    target = "x86_64-apple-darwin"
+    extension = ""
+else:
+    target = "x86_64-unknown-linux-gnu"
+    extension = ""
+
+DIST_NAME = f"{APP_NAME}-{target}"
+SOURCE_FILE = os.path.join(ROOT_DIR, "binaries", "main.py")
+VENV_PYTHON = os.path.join(ROOT_DIR, "binaries", ".venv", "Scripts",
+                           "python.exe") if platform == "win32" else os.path.join(ROOT_DIR, "binaries", ".venv", "bin",
+                                                                                  "python")
+OUTPUT_DIR = os.path.join(ROOT_DIR, "src-tauri", "binaries")
+
 
 def build():
-    subprocess.run([
-        "pyinstaller",
-        "--onefile",
-        "--name", DIST_NAME,
-        SOURCE_FILE
-    ], check=True)
+    if not os.path.exists(VENV_PYTHON):
+        print(f"Error: Venv not found")
+        return
 
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    if platform == "win32":
+        subprocess.run(["taskkill", "/F", "/IM", f"{DIST_NAME}.exe", "/T"], stderr=subprocess.DEVNULL,
+                       stdout=subprocess.DEVNULL)
 
-    source_path = os.path.join("dist", f"{DIST_NAME}.exe")
-    dest_path = os.path.join(OUTPUT_DIR, f"{DIST_NAME}.exe")
+    time.sleep(0.5)
 
-    if os.path.exists(dest_path):
-        try:
-            os.remove(dest_path)
-        except PermissionError:
-            return
+    try:
+        subprocess.run([
+            VENV_PYTHON, "-m", "PyInstaller",
+            "--onefile", "--noconsole", "--clean",
+            "--name", DIST_NAME,
+            SOURCE_FILE
+        ], check=True, cwd=ROOT_DIR)
 
-    shutil.move(source_path, dest_path)
+        source_exe = os.path.join(ROOT_DIR, "dist", f"{DIST_NAME}{extension}")
+        dest_exe = os.path.join(OUTPUT_DIR, f"{DIST_NAME}{extension}")
+
+        os.makedirs(OUTPUT_DIR, exist_ok=True)
+        if os.path.exists(dest_exe): os.remove(dest_exe)
+        shutil.move(source_exe, dest_exe)
+        print(f"Build Complete: {dest_exe}")
+
+    except Exception as e:
+        print(f"Build failed: {e}")
+
 
 if __name__ == "__main__":
     build()

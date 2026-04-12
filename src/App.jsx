@@ -1,129 +1,77 @@
-import { useState, useEffect } from "react";
+import {useState, useEffect, useCallback} from "react";
+import {Command} from "@tauri-apps/plugin-shell";
+import {open} from "@tauri-apps/plugin-dialog";
 import "./App.css";
-import { Command } from "@tauri-apps/plugin-shell"; // Import Tauri's Command API
-import { open } from "@tauri-apps/plugin-dialog";
 
 function App() {
-    const [engineStatus, setEngineStatus] = useState("Offline");
-    const [localInfo, setLocalInfo] = useState({ name: "Unknown", ip: "0.0.0.0" });
-
+    const [status, setStatus] = useState("Starting...");
+    const [info, setInfo] = useState({name: "-", ip: "-"});
     const [peers, setPeers] = useState({});
 
-    const fetchPeers = async () => {
+    const sync = useCallback(async () => {
         try {
-            const response = await fetch("http://localhost:8000/peers");
-            const data = await response.json();
-            setPeers(data);
-        } catch (err) {
-            console.error("Failed to fetch peers:", err);
+            const res = await fetch("http://localhost:8000/status");
+            const data = await res.json();
+            setInfo(data);
+            setStatus("Online");
+
+            const pRes = await fetch("http://localhost:8000/peers");
+            setPeers(await pRes.json());
+        } catch (e) {
+            setStatus("Offline");
         }
-    }
-
-    const sendFile = async (peerIp) => {
-        try {
-            const selectedPath = await open({
-                multiple: false,
-                directory: false,
-            });
-
-            if (!selectedPath) return;
-
-            const formData = new FormData();
-            formData.append("target_ip", peerIp);
-            formData.append("file_path", selectedPath);
-
-            const response = await fetch("http://localhost:8000/send-to-peer", {
-                method: "POST",
-                body: formData,
-            });
-
-            const result = await response.json();
-            alert(result.message || result.error);
-
-        } catch (err) {
-            console.error("Transfer failed", err);
-        }
-    };
-
-    const checkEngine = async () => {
-        try {
-            const response = await fetch("http://localhost:8000/status");
-            if (response.ok) {
-                const data = await response.json();
-                setEngineStatus("Online");
-                setLocalInfo({ name: data.name, ip: data.ip });
-            } else {
-                setEngineStatus("Error");
-            }
-        } catch (error) {
-            setEngineStatus("Offline (Is Python running?)");
-        }
-    };
-
-    useEffect(() => {
-        checkEngine();
-        const interval = setInterval(fetchPeers, 5000);
-        return () => clearInterval(interval);
     }, []);
 
     useEffect(() => {
-        const startSidecar = async () => {
-            try {
-                // This starts 'binaries/adrw-engine'
-                const sidecar = Command.sidecar("binaries/adrw-engine");
-                const child = await sidecar.spawn();
-
-                console.log("Python Sidecar started with PID:", child.pid);
-
-                // Optional: Listen to the Python output for debugging
-                sidecar.stdout.on("data", (line) => console.log(`Python: ${line}`));
-                sidecar.stderr.on("data", (line) => console.error(`Python Error: ${line}`));
-
-            } catch (err) {
-                console.error("Failed to spawn sidecar:", err);
-            }
+        const run = async () => {
+            const cmd = Command.sidecar("binaries/adrw-engine");
+            cmd.stdout.on("data", (line) => {
+                if (line.includes("ENGINE_READY")) sync();
+            });
+            await cmd.spawn();
         };
+        run();
+        const inv = setInterval(sync, 3000);
+        return () => clearInterval(inv);
+    }, [sync]);
 
-        startSidecar();
-    }, []);
+    const send = async (ip, port) => {
+        const path = await open({multiple: false});
+        if (!path) return;
+        const fd = new FormData();
+        fd.append("target_ip", ip);
+        fd.append("target_port", port);
+        fd.append("file_path", path);
 
-    return (
-        <div className="container">
-            <header>
-                <h1>AirDropReworked</h1>
-                <div className={`status-badge ${engineStatus === "Online" ? "online" : "offline"}`}>
-                    Engine: {engineStatus}
-                </div>
-            </header>
+        const res = await fetch("http://localhost:8000/sent-to-peer", {method: "POST", body: fd});
+        const out = await res.json();
+        alert(out.status === "ok" ? "Sent!" : "Failed");
+    };
 
-            <main>
-                <section className="local-device">
-                    <h3>Your Device</h3>
-                    <p><strong>Name:</strong> {localInfo.name}</p>
-                    <p><strong>IP Address:</strong> {localInfo.ip}</p>
-                    <button onClick={checkEngine}>Refresh Engine</button>
-                </section>
+    return (<div className="app">
+        <nav>
+            <h2>ADRW</h2>
+            <span className={`tag ${status.toLowerCase()}`}>{status}</span>
+        </nav>
 
-                <hr />
-
-                <section className="discovery">
-                    <h3>Nearby Devices</h3>
-                    {peers.length === 0 ? (
-                        <p className="hint">Searching for other ADRW users...</p>
-                    ) : (
-                        <div className="peer-list">
-                            {Object.entries(peers).map(([name, ip]) => (
-                                <div key={name} className="peer-card">
-                                    <strong>{name}</strong>
-                                    <button onClick={() => sendFile(ip)}>Send File</button>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </section>
-            </main>
+        <div className="hero">
+            <div className="device-info">
+                <h1>{info.name}</h1>
+                <code>{info.ip}</code>
+            </div>
         </div>
-    );
+
+        <section className="peers">
+            <h3>Nearby</h3>
+            <div className="grid">
+                {Object.entries(peers).map(([name, data]) => (<div key={name} className="card">
+                    <span>{name}</span>
+                    <button onClick={() => send(data.ip, data.port)}>Send</button>
+                </div>))}
+                {Object.keys(peers).length === 0 && <p className="empty">No devices found</p>}
+            </div>
+        </section>
+    </div>);
 }
 
 export default App;

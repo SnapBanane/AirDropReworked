@@ -1,18 +1,19 @@
 import os
+import shutil
 import socket
+import threading
+import time
 from contextlib import asynccontextmanager
+from pathlib import Path
 
-from fastapi import FastAPI
+import psutil
+import requests
+from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi import UploadFile, File, Form
-
+from zeroconf import ServiceBrowser, ServiceListener
 from zeroconf.asyncio import AsyncZeroconf, AsyncServiceInfo
-from zeroconf import ServiceBrowser, ServiceListener, Zeroconf
 
 from config import load_device
-
-import shutil
-import requests
 
 
 def get_ip():
@@ -20,33 +21,39 @@ def get_ip():
     try:
         s.connect(("8.8.8.8", 80))
         ip = s.getsockname()[0]
-    except Exception:
+    except:
         ip = "127.0.0.1"
     finally:
         s.close()
     return ip
 
 
+def watch_parent_process():
+    try:
+        parent = psutil.Process(os.getpid()).parent()
+        while parent.is_running():
+            time.sleep(1)
+    except:
+        pass
+    os._exit(0)
+
+
 class ADRWListener(ServiceListener):
     def __init__(self):
         self.peers = {}
-
-    def update_service(self, zc, type_, name):
-        pass  # unneded rn
+        self.ignore_name = None
 
     def remove_service(self, zc, type_, name):
-        if name in self.peers:
-            del self.peers[name]
-            print(f"Peer removed: {name}")
+        clean_name = name.split(".")[0]
+        if clean_name in self.peers: del self.peers[clean_name]
 
     def add_service(self, zc, type_, name):
         info = zc.get_service_info(type_, name)
         if info:
-            addresses = [socket.inet_ntoa(addr) for addr in info.addresses]
-
             clean_name = name.split(".")[0]
-            self.peers[clean_name] = addresses[0] if addresses else "unknown"
-            print(f"Device found: {clean_name} at {self.peers[clean_name]}")
+            if self.ignore_name and clean_name == self.ignore_name: return
+            addresses = [socket.inet_ntoa(addr) for addr in info.addresses]
+            self.peers[clean_name] = {"ip": addresses[0], "port": info.port}
 
 
 adrw_listener = ADRWListener()
@@ -56,52 +63,30 @@ adrw_listener = ADRWListener()
 async def lifespan(app: FastAPI):
     local_ip = get_ip()
     port = getattr(app.state, "port", 8000)
-
     name = getattr(app.state, "device_name", "ADRW-Device")
-    service_name = f"{name}._adrw._tcp.local."
+    adrw_listener.ignore_name = name
 
-    desc = {'path': '/'}
-    info = AsyncServiceInfo(
-        "_adrw._tcp.local.",
-        service_name,
-        addresses=[socket.inet_aton(local_ip)],
-        port=port,
-        properties=desc,
-    )
-
+    info = AsyncServiceInfo("_adrw._tcp.local.", f"{name}._adrw._tcp.local.",
+                            addresses=[socket.inet_aton(local_ip)], port=port, properties={})
     aio_zc = AsyncZeroconf()
-
     browser = ServiceBrowser(aio_zc.zeroconf, "_adrw._tcp.local.", adrw_listener)
-
     await aio_zc.async_register_service(info)
-    app.state.local_ip = local_ip
+
+    # SIGNAL READY TO TAURI
+    print("ENGINE_READY", flush=True)
 
     yield
-
-    # shutdown
-    browser.cancel()
     await aio_zc.async_unregister_service(info)
     await aio_zc.async_close()
 
 
 app = FastAPI(lifespan=lifespan)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-    allow_credentials=True,
-)
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 
 @app.get("/status")
-async def read_root():
-    return {
-        "status": "ok",
-        "name": getattr(app.state, "device_name", "unknown"),
-        "ip": getattr(app.state, "local_ip", "unknown")
-    }
+async def status():
+    return {"name": app.state.device_name, "ip": get_ip()}
 
 
 @app.get("/peers")
@@ -110,56 +95,39 @@ async def get_peers():
 
 
 @app.post("/recieve")
-async def recieve_file(file: UploadFile = File(...)):
-    os.makedirs("downloads", exist_ok=True)
-    file_path = os.path.join("downloads", file.filename)
-
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-
-    print(f"Received {file_path}")
+async def recieve(file: UploadFile = File(...)):
+    save_path = Path.home() / "Downloads" / "ADRW_Received"
+    save_path.mkdir(parents=True, exist_ok=True)
+    target = save_path / file.filename
+    with target.open("wb") as b: shutil.copyfileobj(file.file, b)
     return {"status": "ok"}
 
 
 @app.post("/sent-to-peer")
-async def send_to_peer(target_ip: str = Form(...), file_path: str = Form(...)):
-    if not os.path.exists(file_path):
-        return {"status": "error", "message": "File not found"}
-
-    file_name = os.path.basename(file_path)
-
-    try:
-        with open(file_path, "rb") as f:
-            files = {"file": (file_name, f)}
-            response = requests.post(f"http://{target_ip}:8000/recieve", files=files)
-            return response.json()
-
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
+async def send(target_ip: str = Form(...), target_port: int = Form(...), file_path: str = Form(...)):
+    p = Path(file_path)
+    if not p.exists(): return {"status": "error"}
+    with p.open("rb") as f:
+        r = requests.post(f"http://{target_ip}:{target_port}/recieve", files={"file": (p.name, f)})
+        return r.json()
 
 
 if __name__ == "__main__":
     import uvicorn
     import argparse
 
+    threading.Thread(target=watch_parent_process, daemon=True).start()
     parser = argparse.ArgumentParser()
-
-    parser.add_argument("--port", type=int, default=8000, help="Port to run the server on (default: 8000)")
-    parser.add_argument("--host", type=str, default="0.0.0.0")
-    parser.add_argument("--name", type=str, default="ADRW Device",
-                        help="Device name to advertise (default: ADRW Device)")
-
+    parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--name", type=str, default=None)
     args = parser.parse_args()
 
     if args.name:
-        print("loading name from args...")
-        chosen_name = args.name
+        name = args.name
     else:
-        print("loading name from config...")
-        current_config = load_device()
-        chosen_name = current_config["device_name", "ADRW-Device"]
+        conf = load_device()
+        name = conf.get("device_name", "ADRW-Device")
 
-    app.state.device_name = chosen_name
+    app.state.device_name = name
     app.state.port = args.port
-
-    uvicorn.run(app, host=args.host, port=args.port)
+    uvicorn.run(app, host="0.0.0.0", port=args.port, log_level="error")
