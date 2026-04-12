@@ -21,7 +21,6 @@ body {
     overflow-x: hidden;
 }
 
-/* CONTAINER */
 .app-container {
     display: flex;
     flex-direction: column;
@@ -29,7 +28,6 @@ body {
     width: 100%;
 }
 
-/* NAVBAR - Fixed height, responsive padding */
 .navbar {
     height: var(--nav-height);
     display: flex;
@@ -49,12 +47,11 @@ body {
     font-size: 1.25rem;
 }
 
-/* MAIN CONTENT - Dynamic scaling */
 .main-content {
     flex: 1;
     padding: 2rem 5%;
     width: 100%;
-    max-width: 1200px; /* Prevents ultra-wide stretching */
+    max-width: 1200px;
     margin: 0 auto;
 }
 
@@ -64,13 +61,11 @@ body {
 
 .device-header h1 {
     margin: 0;
-    font-size: clamp(1.5rem, 5vw, 2.5rem); /* Scalable text size */
+    font-size: clamp(1.5rem, 5vw, 2.5rem);
 }
 
-/* PEER GRID - Responsive auto-fill */
 .peer-grid {
     display: grid;
-    /* Automatically fits as many cards as possible, min 280px each */
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
     gap: 1.5rem;
     width: 100%;
@@ -129,7 +124,6 @@ body {
     transition: opacity 0.2s;
 }
 
-/* MODAL - Mobile friendly scaling */
 .modal-overlay {
     position: fixed;
     inset: 0;
@@ -170,13 +164,21 @@ body {
     margin-top: 2rem;
 }
 
-/* Small Laptop/Tablet adjustments */
 @media (max-width: 768px) {
     .main-content {
         padding: 1.5rem;
     }
 
     .peer-grid {
-        grid-template-columns: 1fr; /* Stack cards on mobile */
+        grid-template-columns: 1fr;
     }
+}
+
+.navbar {
+    padding-top: 30px;
+    -webkit-app-region: drag;
+}
+
+button {
+    -webkit-app-region: no-drag;
 }

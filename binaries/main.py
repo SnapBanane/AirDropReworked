@@ -1,19 +1,16 @@
+import asyncio
 import os
 import shutil
 import socket
 import threading
 import time
-import psutil
-import requests
-import asyncio
-
 from contextlib import asynccontextmanager
-
 from pathlib import Path
 
-from fastapi import FastAPI, UploadFile, File, Form, BackgroundTasks
+import psutil
+import requests
+from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
-
 from zeroconf import ServiceBrowser, ServiceListener
 from zeroconf.asyncio import AsyncZeroconf, AsyncServiceInfo
 
@@ -113,7 +110,7 @@ transfer_responses = {}
 @app.post("/request-transfer")
 async def request_transfer(filename: str = Form(...), sender_name: str = Form(...), sender_ip: str = Form(...)):
     global pending_transfer
-    t_id = f"{sender_ip}-{int(time.time())}"  # Unique ID for this specific attempt
+    t_id = f"{sender_ip}-{int(time.time())}"
 
     pending_transfer = {
         "available": True,

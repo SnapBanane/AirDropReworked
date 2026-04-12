@@ -1,13 +1,12 @@
-import subprocess
 import os
 import shutil
-import time
+import subprocess
 import sys
+import time
 
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 APP_NAME = "adrw-engine"
 
-# Detect platform for production naming
 platform = sys.platform
 if platform == "win32":
     target = "x86_64-pc-windows-msvc"
