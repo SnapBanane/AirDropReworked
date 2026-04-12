@@ -53,8 +53,8 @@ Set up the Python venv and install the sidecar dependencies:
 ```bash
 cd binaries
 python -m venv .venv
-.venv/Scripts/pip install fastapi uvicorn requests psutil zeroconf   # Windows
-# .venv/bin/pip install ...                                           # macOS/Linux
+.venv/Scripts/pip install fastapi uvicorn requests psutil zeroconf pyinstaller httpx python-multipart # Windows
+# .venv/bin/pip install ... # macOS/Linux
 ```
 
 ### Run in development
