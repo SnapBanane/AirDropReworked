@@ -1,4 +1,5 @@
 import os
+import platform as _platform
 import shutil
 import subprocess
 import sys
@@ -12,7 +13,11 @@ if platform == "win32":
     target = "x86_64-pc-windows-msvc"
     extension = ".exe"
 elif platform == "darwin":
-    target = "x86_64-apple-darwin"
+    machine = _platform.machine()
+    if machine == "arm64":
+        target = "aarch64-apple-darwin"
+    else:
+        target = "x86_64-apple-darwin"
     extension = ""
 else:
     target = "x86_64-unknown-linux-gnu"
@@ -28,7 +33,8 @@ OUTPUT_DIR = os.path.join(ROOT_DIR, "src-tauri", "binaries")
 
 def build():
     if not os.path.exists(VENV_PYTHON):
-        print(f"Error: Venv not found")
+        print(f"Error: Venv not found at {VENV_PYTHON}")
+        print("Run: cd binaries && python -m venv .venv && .venv/bin/pip install fastapi uvicorn httpx psutil zeroconf")
         return
 
     if platform == "win32":
@@ -49,9 +55,10 @@ def build():
         dest_exe = os.path.join(OUTPUT_DIR, f"{DIST_NAME}{extension}")
 
         os.makedirs(OUTPUT_DIR, exist_ok=True)
-        if os.path.exists(dest_exe): os.remove(dest_exe)
+        if os.path.exists(dest_exe):
+            os.remove(dest_exe)
         shutil.move(source_exe, dest_exe)
-        print(f"Build Complete: {dest_exe}")
+        print(f"Build complete: {dest_exe}")
 
     except Exception as e:
         print(f"Build failed: {e}")

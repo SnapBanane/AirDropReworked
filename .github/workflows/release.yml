@@ -48,10 +48,9 @@ jobs:
 
       - name: build python sidecar
         run: |
-          pip install pyinstaller fastapi uvicorn requests psutil zeroconf
-          # This command needs to match your build script
-          # It generates the binary in src-tauri/binaries/
-          npm run build:engine 
+          # FIX 3: httpx replaces requests in the sidecar
+          pip install pyinstaller fastapi uvicorn httpx psutil zeroconf
+          npm run build:engine
 
       - name: install frontend dependencies
         run: npm install

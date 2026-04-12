@@ -7,8 +7,8 @@ import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import httpx
 import psutil
-import requests
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from zeroconf import ServiceBrowser, ServiceListener
@@ -56,7 +56,8 @@ class ADRWListener(ServiceListener):
         info = zc.get_service_info(type_, name)
         if info:
             clean_name = name.split(".")[0]
-            if self.ignore_name and clean_name == self.ignore_name: return
+            if self.ignore_name and clean_name == self.ignore_name:
+                return
             addresses = [socket.inet_ntoa(addr) for addr in info.addresses]
             self.peers[clean_name] = {"ip": addresses[0], "port": info.port, "last_seen": time.time()}
 
@@ -87,6 +88,10 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
+_transfer_lock = asyncio.Lock()
+pending_transfer = {"available": False, "filename": None, "sender_name": None, "sender_ip": None}
+transfer_responses = {}
+
 
 @app.get("/status")
 async def status():
@@ -103,33 +108,34 @@ async def check_request():
     return pending_transfer
 
 
-pending_transfer = {"available": False, "filename": None, "sender_name": None, "sender_ip": None}
-transfer_responses = {}
-
-
 @app.post("/request-transfer")
 async def request_transfer(filename: str = Form(...), sender_name: str = Form(...), sender_ip: str = Form(...)):
     global pending_transfer
-    t_id = f"{sender_ip}-{int(time.time())}"
 
-    pending_transfer = {
-        "available": True,
-        "filename": filename,
-        "sender_name": sender_name,
-        "sender_ip": sender_ip,
-        "id": t_id
-    }
+    if not _transfer_lock.locked():
+        async with _transfer_lock:
+            t_id = f"{sender_ip}-{int(time.time())}"
 
-    timeout = 60
-    start = time.time()
-    while time.time() - start < timeout:
-        if t_id in transfer_responses:
-            resp = transfer_responses.pop(t_id)
-            return resp
-        await asyncio.sleep(0.5)
+            pending_transfer = {
+                "available": True,
+                "filename": filename,
+                "sender_name": sender_name,
+                "sender_ip": sender_ip,
+                "id": t_id
+            }
 
-    pending_transfer["available"] = False
-    return {"status": "timeout"}
+            timeout = 60
+            start = time.time()
+            while time.time() - start < timeout:
+                if t_id in transfer_responses:
+                    resp = transfer_responses.pop(t_id)
+                    return resp
+                await asyncio.sleep(0.5)
+
+            pending_transfer["available"] = False
+            return {"status": "timeout"}
+    else:
+        return {"status": "busy", "message": "A transfer is already in progress"}
 
 
 @app.post("/respond-transfer")
@@ -158,15 +164,6 @@ async def receive_final(save_path: str = Form(...), file: UploadFile = File(...)
         return {"status": "error", "message": str(e)}
 
 
-@app.post("/recieve")
-async def recieve(file: UploadFile = File(...)):
-    save_path = Path.home() / "Downloads" / "ADRW_Received"
-    save_path.mkdir(parents=True, exist_ok=True)
-    target = save_path / file.filename
-    with target.open("wb") as b: shutil.copyfileobj(file.file, b)
-    return {"status": "ok"}
-
-
 @app.post("/sent-to-peer")
 async def send(target_ip: str = Form(...), target_port: int = Form(...), file_path: str = Form(...)):
     p = Path(file_path)
@@ -180,25 +177,24 @@ async def send(target_ip: str = Form(...), target_port: int = Form(...), file_pa
             "sender_ip": get_ip()
         }
 
-        response = requests.post(
-            f"http://{target_ip}:{target_port}/request-transfer",
-            data=handshake_data,
-            timeout=65
-        )
+        async with httpx.AsyncClient(timeout=70.0) as client:
+            response = await client.post(
+                f"http://{target_ip}:{target_port}/request-transfer",
+                data=handshake_data,
+            )
+            res_json = response.json()
 
-        res_json = response.json()
+            if res_json.get("status") == "accepted" and res_json.get("save_at"):
+                save_path = res_json.get("save_at")
 
-        if res_json.get("status") == "accepted" and res_json.get("save_at"):
-            save_path = res_json.get("save_at")
-
-            with open(p, "rb") as f:
-                final_res = requests.post(
-                    f"http://{target_ip}:{target_port}/receive-final",
-                    data={"save_path": save_path},
-                    files={"file": (p.name, f)},
-                    timeout=None
-                )
-            return final_res.json()
+                with open(p, "rb") as f:
+                    final_res = await client.post(
+                        f"http://{target_ip}:{target_port}/receive-final",
+                        data={"save_path": save_path},
+                        files={"file": (p.name, f)},
+                        timeout=None,
+                    )
+                return final_res.json()
 
         return {"status": "denied", "message": "Receiver rejected the file"}
 
