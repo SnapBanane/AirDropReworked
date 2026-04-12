@@ -58,6 +58,9 @@ jobs:
           pip install pyinstaller fastapi uvicorn httpx psutil zeroconf
           ADRW_TARGET_OVERRIDE=x86_64-apple-darwin python build_tools/build_sidecar.py
           ADRW_TARGET_OVERRIDE=aarch64-apple-darwin python build_tools/build_sidecar.py
+          lipo -create -output src-tauri/binaries/adrw-engine-universal-apple-darwin \
+            src-tauri/binaries/adrw-engine-x86_64-apple-darwin \
+            src-tauri/binaries/adrw-engine-aarch64-apple-darwin
 
       - name: install frontend dependencies
         run: npm install
