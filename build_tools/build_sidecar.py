@@ -13,11 +13,11 @@ if platform == "win32":
     target = "x86_64-pc-windows-msvc"
     extension = ".exe"
 elif platform == "darwin":
-    machine = _platform.machine()
-    if machine == "arm64":
-        target = "aarch64-apple-darwin"
+    override = os.environ.get("ADRW_TARGET_OVERRIDE")
+    if override:
+        target = override
     else:
-        target = "x86_64-apple-darwin"
+        target = "aarch64-apple-darwin" if _platform.machine() == "arm64" else "x86_64-apple-darwin"
     extension = ""
 else:
     target = "x86_64-unknown-linux-gnu"
