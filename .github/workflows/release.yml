@@ -73,9 +73,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: app-v__VERSION__
-          releaseName: "ADRW v__VERSION__"
-          releaseBody: "Automated build of ADRW v__VERSION__ by GitHub Actions. Developed by Julius Gerhardus"
-          releaseDraft: true
+          tagName: app-v0.1.1
+          releaseName: "ADRW v0.1.1"
+          releaseBody: "Automated build of ADRW v0.1.1 by GitHub Actions. Developed by Julius Gerhardus"
+          releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
