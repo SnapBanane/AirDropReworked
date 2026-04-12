@@ -87,8 +87,6 @@ async def lifespan(app: FastAPI):
     await aio_zc.async_close()
 
 
-pending_transfer = {"available": False, "filename": None, "sender_name": None, "sender_ip": None}
-
 app = FastAPI(lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
@@ -108,28 +106,30 @@ async def check_request():
     return pending_transfer
 
 
+pending_transfer = {"available": False, "filename": None, "sender_name": None, "sender_ip": None}
 transfer_responses = {}
 
 
 @app.post("/request-transfer")
 async def request_transfer(filename: str = Form(...), sender_name: str = Form(...), sender_ip: str = Form(...)):
     global pending_transfer
-    transfer_id = f"{sender_ip}-{filename}"
+    t_id = f"{sender_ip}-{int(time.time())}"  # Unique ID for this specific attempt
+
     pending_transfer = {
         "available": True,
         "filename": filename,
         "sender_name": sender_name,
         "sender_ip": sender_ip,
-        "id": transfer_id
+        "id": t_id
     }
 
     timeout = 60
     start = time.time()
     while time.time() - start < timeout:
-        if transfer_id in transfer_responses:
-            resp = transfer_responses.pop(transfer_id)
+        if t_id in transfer_responses:
+            resp = transfer_responses.pop(t_id)
             return resp
-        await asyncio.sleep(1)
+        await asyncio.sleep(0.5)
 
     pending_transfer["available"] = False
     return {"status": "timeout"}
@@ -138,6 +138,7 @@ async def request_transfer(filename: str = Form(...), sender_name: str = Form(..
 @app.post("/respond-transfer")
 async def respond_transfer(accepted: bool = Form(...), save_path: str = Form(None), transfer_id: str = Form(...)):
     global pending_transfer
+
     pending_transfer["available"] = False
 
     if accepted:
@@ -145,7 +146,7 @@ async def respond_transfer(accepted: bool = Form(...), save_path: str = Form(Non
     else:
         transfer_responses[transfer_id] = {"status": "denied"}
 
-    return {"status": "noted"}
+    return {"status": "processed"}
 
 
 @app.post("/receive-final")

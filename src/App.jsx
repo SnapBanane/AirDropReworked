@@ -1,15 +1,15 @@
-import {useState, useEffect, useCallback, useRef} from "react";
-import {Command} from "@tauri-apps/plugin-shell";
-import {open, save} from "@tauri-apps/plugin-dialog";
-import {getCurrentWebview} from "@tauri-apps/api/webview";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { Command } from "@tauri-apps/plugin-shell";
+import { open, save } from "@tauri-apps/plugin-dialog";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import "./App.css";
 
 function App() {
-    // Prevent multiple instances during React Hot-Reloads
+    // Prevent multiple engine instances during development hot-reloads
     const sidecarStarted = useRef(false);
 
     const [status, setStatus] = useState("Initializing...");
-    const [info, setInfo] = useState({name: "-", ip: "-"});
+    const [info, setInfo] = useState({ name: "-", ip: "-" });
     const [peers, setPeers] = useState({});
     const [transferRequest, setTransferRequest] = useState(null);
 
@@ -26,13 +26,16 @@ function App() {
             const pRes = await fetch("http://localhost:8000/peers");
             if (pRes.ok) setPeers(await pRes.json());
 
-            // Check for incoming transfer requests (Handshake)
+            // Handshake Polling
             const tRes = await fetch("http://localhost:8000/check-request");
             const tData = await tRes.json();
 
-            // Only trigger modal if a new request is available
-            if (tData.available && (!transferRequest || transferRequest.filename !== tData.filename)) {
+            // Only show modal if engine says a request is available AND we aren't already showing one
+            if (tData.available && !transferRequest) {
                 setTransferRequest(tData);
+            } else if (!tData.available && transferRequest) {
+                // If the engine cleared the request (e.g., sender timed out), close modal
+                setTransferRequest(null);
             }
         } catch (e) {
             setStatus("Engine Offline");
@@ -52,30 +55,28 @@ function App() {
                 cmd.stdout.on("data", (line) => {
                     if (line.includes("ENGINE_READY")) {
                         sync();
-                        // Poll every 2 seconds
                         interval = setInterval(sync, 2000);
                     }
                 });
 
                 await cmd.spawn();
             } catch (e) {
-                console.error("Failed to spawn engine", e);
+                console.error("Sidecar failed:", e);
                 sidecarStarted.current = false;
             }
         };
 
         run();
 
-        // Setup Drag and Drop
+        // Drag and Drop Logic
         const unlisten = getCurrentWebview().onDragDropEvent((event) => {
             if (event.payload.type === "drop") {
                 const droppedPath = event.payload.paths[0];
-                // Target the first discovered peer for quick drops
                 const firstPeer = Object.values(peers)[0];
                 if (firstPeer) {
                     send(firstPeer.ip, firstPeer.port, droppedPath);
                 } else {
-                    alert("No peers found to drop file to.");
+                    alert("No peers found. Drag a file onto a specific peer card.");
                 }
             }
         });
@@ -86,68 +87,68 @@ function App() {
         };
     }, [sync, peers]);
 
-    // 3. SEND FILE (SENDER SIDE)
+    // 3. SEND FILE (SENDER)
     const send = async (ip, port, manualPath = null) => {
-        // Use manualPath (from drop) or open file picker
-        let path = manualPath || await open({multiple: false});
+        let path = manualPath || await open({ multiple: false });
         if (!path) return;
 
+        setStatus("Waiting for peer...");
         const fd = new FormData();
         fd.append("target_ip", ip);
         fd.append("target_port", port);
         fd.append("file_path", path);
 
         try {
-            setStatus("Sending...");
             const res = await fetch("http://localhost:8000/sent-to-peer", {
                 method: "POST",
                 body: fd,
             });
             const out = await res.json();
             setStatus("Online");
-            if (out.status !== "ok") alert("Refused: " + (out.message || "Peer denied request"));
+            if (out.status === "ok") alert("Success!");
+            else alert("Transfer " + (out.message || "denied"));
         } catch (e) {
-            alert("Transfer failed: Connection lost");
+            alert("Connection error");
             setStatus("Online");
         }
     };
 
-    // 4. RECEIVE FILE (RECEIVER SIDE)
+    // 4. HANDSHAKE ACTIONS (RECEIVER)
     const handleAccept = async () => {
-        // Open the native system save dialog
+        const currentId = transferRequest.id; // Capture ID before state clears
+
         const savePath = await save({
             defaultPath: transferRequest.filename,
         });
 
         if (savePath) {
+            // Close modal immediately
+            setTransferRequest(null);
+
             const fd = new FormData();
             fd.append("accepted", "true");
-            fd.append("save_path", savePath); // This sends the chosen path to Python
+            fd.append("save_path", savePath);
+            fd.append("transfer_id", currentId);
 
-            try {
-                await fetch("http://localhost:8000/respond-transfer", {
-                    method: "POST",
-                    body: fd,
-                });
-            } catch (e) {
-                console.error("Failed to respond to transfer", e);
-            }
-            setTransferRequest(null);
-        }
-    };
-
-    const handleDecline = async () => {
-        const fd = new FormData();
-        fd.append("accepted", "false");
-        try {
             await fetch("http://localhost:8000/respond-transfer", {
                 method: "POST",
                 body: fd,
             });
-        } catch (e) {
-            console.error("Failed to decline transfer", e);
         }
+    };
+
+    const handleDecline = async () => {
+        const currentId = transferRequest.id;
         setTransferRequest(null);
+
+        const fd = new FormData();
+        fd.append("accepted", "false");
+        fd.append("transfer_id", currentId);
+
+        await fetch("http://localhost:8000/respond-transfer", {
+            method: "POST",
+            body: fd,
+        });
     };
 
     return (
@@ -159,7 +160,7 @@ function App() {
                 </div>
             </nav>
 
-            <div className="main-content">
+            <main className="main-content">
                 <header className="device-header">
                     <h1>{info.name}</h1>
                     <p>{info.ip}</p>
@@ -168,7 +169,7 @@ function App() {
                 <section className="peer-section">
                     <div className="section-header">
                         <h3>Nearby Devices</h3>
-                        <p className="hint">Drag a file onto a card or use the button</p>
+                        <p className="hint">Drag a file here or use the button</p>
                     </div>
 
                     <div className="peer-grid">
@@ -179,10 +180,7 @@ function App() {
                                     <strong>{name}</strong>
                                     <span>{data.ip}</span>
                                 </div>
-                                <button
-                                    className="select-file-btn"
-                                    onClick={() => send(data.ip, data.port)}
-                                >
+                                <button className="select-file-btn" onClick={() => send(data.ip, data.port)}>
                                     Select File
                                 </button>
                             </div>
@@ -192,7 +190,7 @@ function App() {
                         )}
                     </div>
                 </section>
-            </div>
+            </main>
 
             {/* HANDSHAKE MODAL */}
             {transferRequest && (
