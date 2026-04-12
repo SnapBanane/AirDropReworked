@@ -1,86 +1,182 @@
 :root {
+    --bg: #050505;
+    --card: #121212;
     --accent: #007aff;
-    --bg: #000000;
-    --surf: #1c1c1e;
+    --text-main: #ffffff;
+    --text-dim: #8e8e93;
+    --danger: #ff3b30;
+    --success: #34c759;
+    --nav-height: 70px;
+}
+
+* {
+    box-sizing: border-box;
 }
 
 body {
-    background: var(--bg);
-    color: white;
-    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
     margin: 0;
+    background-color: var(--bg);
+    color: var(--text-main);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    overflow-x: hidden;
 }
 
-.app {
-    padding: 20px;
+/* CONTAINER */
+.app-container {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    width: 100%;
 }
 
-nav {
+/* NAVBAR - Fixed height, responsive padding */
+.navbar {
+    height: var(--nav-height);
     display: flex;
     justify-content: space-between;
     align-items: center;
+    padding: 0 5%;
+    border-bottom: 1px solid #222;
+    background: rgba(5, 5, 5, 0.8);
+    backdrop-filter: blur(10px);
+    position: sticky;
+    top: 0;
+    z-index: 100;
 }
 
-.tag {
-    font-size: 12px;
-    padding: 4px 12px;
-    border-radius: 20px;
-    background: #2c2c2e;
+.logo {
+    font-weight: 800;
+    font-size: 1.25rem;
 }
 
-.tag.online {
-    color: #32d74b;
-    background: rgba(50, 215, 75, 0.1);
+/* MAIN CONTENT - Dynamic scaling */
+.main-content {
+    flex: 1;
+    padding: 2rem 5%;
+    width: 100%;
+    max-width: 1200px; /* Prevents ultra-wide stretching */
+    margin: 0 auto;
 }
 
-.hero {
-    padding: 40px 0;
-    text-align: center;
-    border-bottom: 1px solid #2c2c2e;
+.device-header {
+    margin-bottom: 3rem;
 }
 
-h1 {
+.device-header h1 {
     margin: 0;
-    font-size: 32px;
-    letter-spacing: -1px;
+    font-size: clamp(1.5rem, 5vw, 2.5rem); /* Scalable text size */
 }
 
-code {
-    color: #8e8e93;
-}
-
-.grid {
+/* PEER GRID - Responsive auto-fill */
+.peer-grid {
     display: grid;
-    gap: 12px;
-    margin-top: 20px;
+    /* Automatically fits as many cards as possible, min 280px each */
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1.5rem;
+    width: 100%;
 }
 
-.card {
-    background: var(--surf);
-    padding: 16px;
-    border-radius: 14px;
+.peer-card {
+    background: var(--card);
+    border: 1px solid #222;
+    border-radius: 20px;
+    padding: 2rem;
     display: flex;
-    justify-content: space-between;
+    flex-direction: column;
     align-items: center;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-button {
-    background: var(--accent);
-    color: white;
+.peer-card:hover {
+    border-color: var(--accent);
+    background: #161616;
+    transform: translateY(-4px);
+}
+
+.peer-icon {
+    width: 80px;
+    height: 80px;
+    background: linear-gradient(135deg, var(--accent), #5856d6);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 10px 20px rgba(0, 122, 255, 0.2);
+}
+
+.peer-info {
+    text-align: center;
+    margin-bottom: 1.5rem;
+}
+
+.peer-info strong {
+    display: block;
+    font-size: 1.2rem;
+    margin-bottom: 0.25rem;
+}
+
+.peer-card button {
+    width: 100%;
+    padding: 12px;
+    border-radius: 12px;
     border: none;
-    padding: 8px 20px;
-    border-radius: 10px;
+    background: #fff;
+    color: #000;
     font-weight: 600;
     cursor: pointer;
     transition: opacity 0.2s;
 }
 
-button:hover {
-    opacity: 0.8;
+/* MODAL - Mobile friendly scaling */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    z-index: 1000;
+    backdrop-filter: blur(8px);
 }
 
-.empty {
-    color: #48484a;
-    text-align: center;
-    padding: 20px;
+.modal-card {
+    background: #1c1c1e;
+    padding: 2rem;
+    border-radius: 28px;
+    width: 100%;
+    max-width: 450px;
+    border: 1px solid #333;
+    animation: modalPop 0.3s ease-out;
+}
+
+@keyframes modalPop {
+    from {
+        opacity: 0;
+        transform: scale(0.9);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.modal-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+    margin-top: 2rem;
+}
+
+/* Small Laptop/Tablet adjustments */
+@media (max-width: 768px) {
+    .main-content {
+        padding: 1.5rem;
+    }
+
+    .peer-grid {
+        grid-template-columns: 1fr; /* Stack cards on mobile */
+    }
 }

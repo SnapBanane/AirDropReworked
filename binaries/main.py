@@ -3,13 +3,16 @@ import shutil
 import socket
 import threading
 import time
-from contextlib import asynccontextmanager
-from pathlib import Path
-
 import psutil
 import requests
-from fastapi import FastAPI, UploadFile, File, Form
+
+from contextlib import asynccontextmanager
+
+from pathlib import Path
+
+from fastapi import FastAPI, UploadFile, File, Form, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
+
 from zeroconf import ServiceBrowser, ServiceListener
 from zeroconf.asyncio import AsyncZeroconf, AsyncServiceInfo
 
@@ -79,6 +82,8 @@ async def lifespan(app: FastAPI):
     await aio_zc.async_close()
 
 
+pending_transfer = {"available": False, "filename": None, "sender_name": None, "sender_ip": None}
+
 app = FastAPI(lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
@@ -91,6 +96,44 @@ async def status():
 @app.get("/peers")
 async def get_peers():
     return adrw_listener.peers
+
+
+@app.get("/check-request")
+async def check_request():
+    return pending_transfer
+
+
+@app.post("/request-transfer")
+async def request_transfer(filename: str = Form(...), sender_name: str = Form(...), sender_ip: str = Form(...)):
+    global pending_transfer
+    pending_transfer = {
+        "available": True,
+        "filename": filename,
+        "sender_name": sender_name,
+        "sender_ip": sender_ip,
+    }
+    return {"status": "waiting_for_user"}
+
+
+@app.post("/respond-transfer")
+async def respond_transfer(accepted: bool = Form(...)):
+    global pending_transfer
+    if not accepted:
+        pending_transfer["available"] = False
+        return {"status": "denied"}
+    return {"status": "accepted"}
+
+
+@app.post("/receive-final")
+async def receive_final(save_path: str = Form(...), file: UploadFile = File(...)):
+    global pending_transfer
+    try:
+        with open(save_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        pending_transfer["available"] = False
+        return {"status": "ok"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 
 @app.post("/recieve")
