@@ -60,6 +60,7 @@ jobs:
           # PyInstaller cannot cross-compile from arm64 to x86_64.
           # Copy the arm64 binary under the universal name Tauri expects.
           # On Intel Macs it runs under Rosetta 2 - fine for v0.1.0.
+          cp src-tauri/binaries/adrw-engine-aarch64-apple-darwin src-tauri/binaries/adrw-engine-x86_64-apple-darwin
           cp src-tauri/binaries/adrw-engine-aarch64-apple-darwin src-tauri/binaries/adrw-engine-universal-apple-darwin
 
       - name: install frontend dependencies
