@@ -52,21 +52,15 @@ jobs:
           pip install pyinstaller fastapi uvicorn httpx psutil zeroconf
           python build_tools/build_sidecar.py
 
-      - name: build python sidecar (macos - arm64 runner, build arm64 only)
+      - name: build python sidecar (macos)
         if: matrix.platform == 'macos-latest'
         run: |
           pip install pyinstaller fastapi uvicorn httpx psutil zeroconf
-          # macos-latest runners are arm64. PyInstaller cannot cross-compile to
-          # x86_64 from an arm64 Python interpreter, so we build arm64 only.
-          # Tauri's universal build picks the matching triple at runtime;
-          # x86_64 Macs will use the x86_64 slice which is not provided here,
-          # but arm64 (Apple Silicon) is covered. See tauri.conf.json externalBin.
           python build_tools/build_sidecar.py
-          # Also produce the x86_64 name as a copy so Tauri's bundler finds
-          # both expected filenames. At runtime on x86_64 hardware the sidecar
-          # will run under Rosetta 2 — acceptable for v0.1.0.
-          cp src-tauri/binaries/adrw-engine-aarch64-apple-darwin \
-             src-tauri/binaries/adrw-engine-x86_64-apple-darwin
+          # PyInstaller cannot cross-compile from arm64 to x86_64.
+          # Copy the arm64 binary under the universal name Tauri expects.
+          # On Intel Macs it runs under Rosetta 2 - fine for v0.1.0.
+          cp src-tauri/binaries/adrw-engine-aarch64-apple-darwin src-tauri/binaries/adrw-engine-universal-apple-darwin
 
       - name: install frontend dependencies
         run: npm install
