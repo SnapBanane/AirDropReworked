@@ -51,10 +51,13 @@ npm install
 Set up the Python venv and install the sidecar dependencies:
 
 ```bash
+# Tested with python 3.13 and 3.14
 cd binaries
 python -m venv .venv
-.venv/Scripts/pip install fastapi uvicorn requests psutil zeroconf pyinstaller httpx python-multipart # Windows
-# .venv/bin/pip install ... # macOS/Linux
+ # Windows
+.venv/Scripts/pip install fastapi uvicorn requests psutil zeroconf pyinstaller httpx python-multipart
+# macOS/Linux
+.venv/bin/pip install fastapi uvicorn requests psutil zeroconf pyinstaller httpx python-multipart
 ```
 
 ### Run in development

@@ -47,18 +47,18 @@ jobs:
       - name: setup python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: '3.14'
 
       - name: build python sidecar (windows + linux)
         if: matrix.platform != 'macos-latest'
         run: |
-          pip install pyinstaller fastapi uvicorn httpx psutil zeroconf
+          pip install fastapi uvicorn requests psutil zeroconf pyinstaller httpx python-multipart
           python build_tools/build_sidecar.py
 
       - name: build python sidecar (macos)
         if: matrix.platform == 'macos-latest'
         run: |
-          pip install pyinstaller fastapi uvicorn httpx psutil zeroconf
+          pip install fastapi uvicorn requests psutil zeroconf pyinstaller httpx python-multipart
           python build_tools/build_sidecar.py
           # PyInstaller cannot cross-compile from arm64 to x86_64.
           # Copy the arm64 binary under the universal name Tauri expects.
@@ -73,8 +73,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: app-v0.1.1
-          releaseName: "ADRW v0.1.1"
+          tagName: app-v0.1.2
+          releaseName: "ADRW v0.1.2"
           releaseBody: "Automated build of ADRW v0.1.1 by GitHub Actions. Developed by Julius Gerhardus"
           releaseDraft: false
           prerelease: false
